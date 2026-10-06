@@ -36,7 +36,7 @@ pause() { read -r -p "Tekan ENTER untuk lanjut..."; }
 PANEL_DIR="/var/www/pterodactyl"
 WINGS_DIR="/etc/pterodactyl"
 PHP_VER="8.3"
-NODE_VER="20"
+NODE_VER="22"
 
 require_root() {
   [ "$EUID" -eq 0 ] || die "Script ini harus dijalankan sebagai root. Login sebagai root lalu jalankan lagi."
@@ -346,12 +346,9 @@ install_blueprint() {
   info "Menyiapkan dependensi Node panel (yarn install)..."
   yarn install >/dev/null 2>&1 || warn "yarn install ada peringatan, lanjut saja."
 
-  # --- Unduh rilis Blueprint terbaru dari GitHub ---
+  # --- Unduh rilis Blueprint terbaru (URL resmi sesuai panduan blueprint.zip) ---
   info "Mengunduh Blueprint terbaru..."
-  local BP_URL
-  BP_URL="$(curl -s https://api.github.com/repos/BlueprintFramework/framework/releases/latest | grep browser_download_url | grep '\.zip"' | head -n1 | cut -d '"' -f 4)"
-  [ -n "$BP_URL" ] || die "Tidak menemukan file rilis Blueprint di GitHub. Cek koneksi / coba lagi nanti."
-  curl -sL -o /tmp/blueprint.zip "$BP_URL" || die "Gagal mengunduh Blueprint."
+  curl -fsSL -o /tmp/blueprint.zip "https://github.com/BlueprintFramework/framework/releases/latest/download/release.zip" || die "Gagal mengunduh Blueprint. Cek koneksi / coba lagi nanti."
   unzip -oq /tmp/blueprint.zip -d "$PANEL_DIR" || die "Gagal mengekstrak Blueprint."
   rm -f /tmp/blueprint.zip
 
