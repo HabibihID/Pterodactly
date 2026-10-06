@@ -383,6 +383,57 @@ install_extension() {
   pause
 }
 
+# ------------------ Katalog tema gratis (GitHub) ------------------
+# Tema open-source yang file .blueprint-nya diunduh langsung dari repo
+# resmi pembuatnya saat runtime (installer ini tidak menyebarluaskan
+# ulang file tema siapa pun).
+bp_install_download() { # bp_install_download <url> <namafile.blueprint> <label>
+  local URL="$1" FILE="$2" LABEL="$3"
+  info "Mengunduh ${LABEL}..."
+  curl -fsSL -o "${PANEL_DIR}/${FILE}" "$URL" || { warn "Gagal mengunduh ${LABEL}. Periksa koneksi internet."; return 1; }
+  [ -s "${PANEL_DIR}/${FILE}" ] || { warn "File ${LABEL} kosong/tidak valid."; return 1; }
+  info "Memasang ${LABEL}..."
+  bash blueprint.sh -install "${FILE%.blueprint}" || { warn "Gagal memasang ${LABEL}. Lihat pesan Blueprint di atas."; return 1; }
+  ok "${LABEL} terpasang. Aktifkan/atur lewat ikon puzzle di panel."
+}
+
+install_theme_catalog() {
+  [ -f "${PANEL_DIR}/blueprint.sh" ] || die "Blueprint belum terpasang. Pasang dulu lewat menu 4 (Pasang Blueprint)."
+  cd "$PANEL_DIR" || die "Tidak bisa masuk $PANEL_DIR."
+  while true; do
+    echo ""
+    echo "  ===== KATALOG TEMA GRATIS (dari GitHub pembuatnya) ====="
+    echo "  1) Darkenate      — tema gelap (blueprint-community)"
+    echo "  2) Abyss Purple   — ungu (fernsehheft)"
+    echo "  3) Emerald Abyss  — hijau zamrud (fernsehheft)"
+    echo "  4) Crimson Abyss  — merah (fernsehheft)"
+    echo "  5) Amber Abyss    — kuning amber (fernsehheft)"
+    echo "  6) SKA Theme      — neon luar angkasa (sdgamer8263)"
+    echo "  7) URL sendiri    — unduh file .blueprint dari URL kamu"
+    echo "  0) Kembali"
+    echo ""
+    read -r -p "  Pilih tema: " TEMA
+    case "$TEMA" in
+      1) bp_install_download "https://github.com/blueprint-community/extension-darkenate/releases/latest/download/darkenate.blueprint" "darkenate.blueprint" "Darkenate" ;;
+      2) bp_install_download "https://github.com/fernsehheft/Abyss-Purple/releases/latest/download/abysspurple.blueprint" "abysspurple.blueprint" "Abyss Purple" ;;
+      3) bp_install_download "https://github.com/fernsehheft/Emerald-Abyss/releases/latest/download/emeraldabyss.blueprint" "emeraldabyss.blueprint" "Emerald Abyss" ;;
+      4) bp_install_download "https://github.com/fernsehheft/Crimson-Abyss/releases/latest/download/crimsonabyss.blueprint" "crimsonabyss.blueprint" "Crimson Abyss" ;;
+      5) bp_install_download "https://github.com/fernsehheft/Amber-Abyss/releases/latest/download/amberabyss.blueprint" "amberabyss.blueprint" "Amber Abyss" ;;
+      6) bp_install_download "https://raw.githubusercontent.com/sdgamer8263-sketch/skathemes/main/skatheme.blueprint" "skatheme.blueprint" "SKA Theme" ;;
+      7)
+        ask "Tempel URL file .blueprint" ""; local CUSTOM_URL="$REPLY_JAWAB"
+        if [ -z "$CUSTOM_URL" ]; then warn "URL kosong, batal."; continue; fi
+        local CUSTOM_FILE; CUSTOM_FILE="$(basename "${CUSTOM_URL%%\?*}")"
+        case "$CUSTOM_FILE" in *.blueprint) ;; *) CUSTOM_FILE="custom.blueprint" ;; esac
+        bp_install_download "$CUSTOM_URL" "$CUSTOM_FILE" "Tema dari URL"
+        ;;
+      0) return ;;
+      *) warn "Pilihan tidak dikenal." ;;
+    esac
+    pause
+  done
+}
+
 # ------------------------- Uninstall ------------------------
 uninstall_panel() {
   warn "Ini akan MENGHAPUS panel, database panel, dan file di $PANEL_DIR. Tidak bisa dibatalkan!"
@@ -431,9 +482,10 @@ menu() {
     echo "  3) Instal Panel + Wings (satu server)"
     echo "  4) Pasang Blueprint (framework tema)"
     echo "  5) Pasang Ekstensi/Tema Blueprint"
-    echo "  6) Update Panel"
-    echo "  7) Uninstall Panel"
-    echo "  8) Uninstall Wings"
+    echo "  6) Katalog Tema Gratis (GitHub)"
+    echo "  7) Update Panel"
+    echo "  8) Uninstall Panel"
+    echo "  9) Uninstall Wings"
     echo "  0) Keluar"
     echo ""
     read -r -p "  Pilih menu: " PIL
@@ -443,9 +495,10 @@ menu() {
       3) install_panel; install_wings ;;
       4) install_blueprint ;;
       5) install_extension ;;
-      6) update_panel ;;
-      7) uninstall_panel ;;
-      8) uninstall_wings ;;
+      6) install_theme_catalog ;;
+      7) update_panel ;;
+      8) uninstall_panel ;;
+      9) uninstall_wings ;;
       0) echo "Sampai jumpa!"; exit 0 ;;
       *) warn "Pilihan tidak dikenal."; sleep 1 ;;
     esac

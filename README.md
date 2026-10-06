@@ -13,9 +13,10 @@ Installer Pterodactyl Panel & Wings serba-bisa dalam satu script — lengkap den
 | 3 | Instal Panel + Wings di satu server |
 | 4 | Pasang Blueprint (framework tema/extension) |
 | 5 | Pasang Ekstensi/Tema Blueprint |
-| 6 | Update Panel ke versi terbaru |
-| 7 | Uninstall Panel |
-| 8 | Uninstall Wings |
+| 6 | Katalog Tema Gratis (unduh dari GitHub pembuatnya) |
+| 7 | Update Panel ke versi terbaru |
+| 8 | Uninstall Panel |
+| 9 | Uninstall Wings |
 
 Password admin panel & database dibuat otomatis dan ditampilkan di akhir instalasi.
 
