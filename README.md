@@ -18,6 +18,8 @@ Installer Pterodactyl Panel & Wings serba-bisa dalam satu script — lengkap den
 | 8 | Uninstall Panel |
 | 9 | Uninstall Wings |
 | 10 | Pasang NookTheme (mengganti **seluruh panel** dengan fork NookTheme — bukan tema Blueprint, ada backup otomatis) |
+| 11 | Pasang Proteksi "Sembunyikan Server dari Admin" (patch terukur + backup, untuk panel v1.12.x) |
+| 12 | Copot Proteksi "Sembunyikan Server dari Admin" (pulihkan file asli + buang kolom) |
 
 Password admin panel & database dibuat otomatis dan ditampilkan di akhir instalasi.
 
@@ -48,3 +50,4 @@ bash install.sh
 - **NookTheme** (Nookure/NookTheme) bukan tema Blueprint, melainkan fork panel utuh. Menu 10 mengganti seluruh panel dengan rilis resmi mereka (backup file + database dibuat otomatis). Tema Blueprint kemungkinan besar tidak jalan setelah panel diganti.
 - **Nebula** dari prplwtf adalah tema **premium** (berbayar, dijual resmi di BuiltByBit). Repo GitHub-nya hanya untuk issue/feedback, tidak ada file tema gratis di sana. Kalau kamu sudah membelinya, pasang file `.blueprint` hasil unduhan resminya lewat menu 5.
 - Tema premium lain (mis. Stellar) juga tidak dibundel: beli resmi, lalu pasang file `.blueprint`-nya lewat menu 5 atau menu URL sendiri di katalog.
+- **Proteksi "Sembunyikan Server dari Admin"** (menu 11/12): server yang ditandai tidak muncul dan tidak bisa dibuka admin root **lain** di Client Panel & Client API (`php artisan habibi:hide-server <id|uuid> on|off` untuk menandai). Pemilik dan subuser sah tetap bisa masuk. Server **tetap terlihat** di area Admin, Application API, dan database — ini penghalang di panel client, bukan penghapus server. Patch menambal file inti panel v1.12.x dengan backup otomatis; update panel akan menimpanya, jadi jalankan menu 11 lagi setelah update.

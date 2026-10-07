@@ -503,6 +503,235 @@ install_nooktheme() {
   pause
 }
 
+# ------------- Fitur: Sembunyikan Server dari Admin -------------
+# Proteksi original installer ini: server yang ditandai (kolom
+# servers.hide_from_admin) tidak bisa dibuka/dilihat admin root LAIN di
+# Client Panel & Client API — pemilik (dan subuser sah) tetap bisa.
+# Masih terlihat di area Admin, Application API, dan database: fitur ini
+# penghalang di panel client, BUKAN penghapus server dari sistem.
+HIDE_STATE="${PANEL_DIR}/.habibi-hide-admin"
+HIDE_CMD_FILE="${PANEL_DIR}/app/Console/Commands/HideServerFromAdminCommand.php"
+
+install_hide_admin() {
+  [ -f "${PANEL_DIR}/artisan" ] || die "Panel tidak ditemukan di $PANEL_DIR. Instal panel dulu ya."
+  if [ -f "$HIDE_STATE" ]; then
+    ok "Fitur sembunyikan server SUDAH terpasang."
+    info "Atur server: cd ${PANEL_DIR} && php artisan habibi:hide-server <id|uuid> on|off"
+    pause; return
+  fi
+  warn "Fitur ini menambal 2 file inti panel (ServerPolicy & ClientController v1.12.x)"
+  warn "dan menambah 1 kolom database. Backup file asli dibuat otomatis terlebih dulu."
+  warn "Update panel (menu 7) akan menimpa patch ini — jalankan menu ini lagi setelah update."
+  ask "Ketik PASANG untuk lanjut" ""; [ "$REPLY_JAWAB" = "PASANG" ] || { warn "Dibatalkan."; pause; return; }
+
+  cd "$PANEL_DIR" || die "Tidak bisa masuk $PANEL_DIR."
+  local TS MIG_NAME
+  TS="$(date +%Y%m%d-%H%M%S)"; MIG_NAME="$(date +%Y_%m_%d_%H%M%S)_add_hide_from_admin_to_servers_table.php"
+
+  # --- 1) Migrasi kolom hide_from_admin (idempoten, aman diulang) ---
+  if ls database/migrations/*hide_from_admin* >/dev/null 2>&1; then
+    MIG_NAME="$(basename "$(ls database/migrations/*hide_from_admin* | head -n1)")"
+    info "Migrasi hide_from_admin sudah ada: ${MIG_NAME}"
+  else
+    cat > "database/migrations/${MIG_NAME}" <<'MIGEOF'
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        if (!Schema::hasColumn('servers', 'hide_from_admin')) {
+            Schema::table('servers', function (Blueprint $table) {
+                $table->boolean('hide_from_admin')->default(false);
+            });
+        }
+    }
+
+    public function down(): void
+    {
+        if (Schema::hasColumn('servers', 'hide_from_admin')) {
+            Schema::table('servers', function (Blueprint $table) {
+                $table->dropColumn('hide_from_admin');
+            });
+        }
+    }
+};
+MIGEOF
+  fi
+  info "Menjalankan migrasi database..."
+  php artisan migrate --force || die "Migrasi gagal. Patch TIDAK dipasang; panel tidak berubah."
+
+  # --- 2) Patch file inti (backup + cek jangkar ketat; batal utuh bila tidak cocok) ---
+  local BAK_DIR="${PANEL_DIR}/backups/habibi-hide-${TS}"
+  cat > /tmp/habibi_hide_patch.php <<'PHEOF'
+<?php
+// Patcher Habibi Hide Admin: backup dulu, batalkan tanpa mengubah apa pun
+// bila jangkar kode panel tidak cocok persis (versi panel berbeda).
+[$self, $panelDir, $backupDir] = $argv + [null, null, null, null];
+if (!$panelDir || !is_dir($panelDir)) { fwrite(STDERR, "Folder panel tidak valid.\n"); exit(1); }
+
+$load = function ($path) {
+    if (!is_file($path)) { fwrite(STDERR, "Tidak ditemukan: $path\n"); exit(1); }
+    return file_get_contents($path);
+};
+
+$policyPath = $panelDir . '/app/Policies/ServerPolicy.php';
+$clientPath = $panelDir . '/app/Http/Controllers/Api/Client/ClientController.php';
+$policy = $load($policyPath);
+$client = $load($clientPath);
+
+if (str_contains($policy, 'HABIBI_HIDE_ADMIN') || str_contains($client, 'HABIBI_HIDE_ADMIN')) {
+    echo "ALREADY\n";
+    exit(0);
+}
+
+$policyAnchor = 'if ($user->root_admin || $server->owner_id === $user->id) {';
+$policyPatch  = 'if (($user->root_admin && empty($server->hide_from_admin)) /* HABIBI_HIDE_ADMIN: admin selain pemilik tidak otomatis lolos di server tersembunyi */ || $server->owner_id === $user->id) {';
+if (substr_count($policy, $policyAnchor) !== 1) {
+    fwrite(STDERR, "Jangkar ServerPolicy tidak ditemukan persis satu kali. Dibatalkan; tidak ada file diubah.\n");
+    exit(1);
+}
+
+$clientAnchor = '$servers = $builder->paginate(';
+$clientInsert = "        // HABIBI_HIDE_ADMIN: sembunyikan server berflag dari daftar client untuk admin root selain pemiliknya.\n"
+    . "        if (\$user->root_admin) {\n"
+    . "            \$builder->where(function (\$q) use (\$user) {\n"
+    . "                \$q->where('servers.hide_from_admin', false)->orWhere('servers.owner_id', \$user->id);\n"
+    . "            });\n"
+    . "        }\n\n"
+    . '        ';
+if (substr_count($client, $clientAnchor) !== 1) {
+    fwrite(STDERR, "Jangkar ClientController tidak ditemukan persis satu kali. Dibatalkan; tidak ada file diubah.\n");
+    exit(1);
+}
+
+if (!is_dir($backupDir) && !mkdir($backupDir, 0755, true)) {
+    fwrite(STDERR, "Gagal membuat folder backup.\n");
+    exit(1);
+}
+copy($policyPath, $backupDir . '/ServerPolicy.php');
+copy($clientPath, $backupDir . '/ClientController.php');
+
+file_put_contents($policyPath, str_replace($policyAnchor, $policyPatch, $policy));
+file_put_contents($clientPath, str_replace($clientAnchor, $clientInsert . $clientAnchor, $client));
+echo "PATCHED $backupDir\n";
+PHEOF
+  local PATCH_OUT
+  PATCH_OUT="$(php /tmp/habibi_hide_patch.php "$PANEL_DIR" "$BAK_DIR")" || {
+    warn "Patch dibatalkan (jangkar tidak cocok). Mengembalikan migrasi..."
+    php artisan migrate:rollback --force --path="database/migrations/${MIG_NAME}" >/dev/null 2>&1 || true
+    rm -f "database/migrations/${MIG_NAME}" /tmp/habibi_hide_patch.php
+    die "Patch gagal dipasang. Panel dikembalikan seperti semula."
+  }
+  rm -f /tmp/habibi_hide_patch.php
+  case "$PATCH_OUT" in
+    ALREADY) info "Patch file inti sudah ada dari pemasangan sebelumnya." ;;
+    PATCHED*) BAK_DIR="${PATCH_OUT#PATCHED }" ;;
+    *) die "Keluaran patcher tidak dikenal: ${PATCH_OUT}" ;;
+  esac
+
+  # --- 3) Perintah artisan untuk menandai/melepas server ---
+  mkdir -p app/Console/Commands
+  cat > "$HIDE_CMD_FILE" <<'CMDEOF'
+<?php
+
+namespace Pterodactyl\Console\Commands;
+
+use Illuminate\Console\Command;
+use Pterodactyl\Models\Server;
+
+class HideServerFromAdminCommand extends Command
+{
+    protected $signature = 'habibi:hide-server {server : ID atau UUID server} {state : on atau off}';
+
+    protected $description = 'Sembunyikan/tampilkan server dari admin root selain pemiliknya (Habibi Hide Admin).';
+
+    public function handle(): int
+    {
+        $key = (string) $this->argument('server');
+        $state = strtolower((string) $this->argument('state'));
+        if (!in_array($state, ['on', 'off'], true)) {
+            $this->error('State harus "on" (sembunyikan) atau "off" (tampilkan lagi).');
+            return 1;
+        }
+
+        $server = Server::query()
+            ->where('id', $key)
+            ->orWhere('uuid', $key)
+            ->orWhere('uuidShort', $key)
+            ->first();
+
+        if (!$server) {
+            $this->error("Server \"{$key}\" tidak ditemukan.");
+            return 1;
+        }
+
+        $server->hide_from_admin = $state === 'on';
+        $server->save();
+
+        $this->info(sprintf(
+            'Server #%d (%s) sekarang %s dari admin root selain pemiliknya.',
+            $server->id,
+            $server->name,
+            $server->hide_from_admin ? 'TERSEMBUNYI' : 'TERLIHAT'
+        ));
+
+        return 0;
+    }
+}
+CMDEOF
+
+  printf 'BACKUP_DIR=%s\nMIGRATION=%s\n' "$BAK_DIR" "$MIG_NAME" > "$HIDE_STATE"
+  chown www-data:www-data "$HIDE_CMD_FILE" "database/migrations/${MIG_NAME}" "$HIDE_STATE" 2>/dev/null || true
+
+  echo ""
+  ok "==================================================="
+  ok "  FITUR SEMBUNYIKAN SERVER DARI ADMIN TERPASANG."
+  ok "  Backup file inti: ${BAK_DIR}"
+  ok "==================================================="
+  info "Cara pakai (dari SSH, di folder panel):"
+  info "  php artisan habibi:hide-server <id|uuid> on    -> sembunyikan server"
+  info "  php artisan habibi:hide-server <id|uuid> off   -> tampilkan lagi"
+  info "Server yang disembunyikan tidak muncul & tidak bisa dibuka admin root lain"
+  info "di Client Panel/API client. Pemilik dan subuser sah tetap bisa masuk."
+  warn "Catatan jujur: server tetap ada di area Admin, Application API, dan database."
+  warn "Setelah update panel (menu 7), jalankan menu ini lagi untuk memasang ulang patch."
+  pause
+}
+
+uninstall_hide_admin() {
+  [ -f "$HIDE_STATE" ] || die "Fitur sembunyikan server belum terpasang (tidak ada penanda)."
+  local BAK_DIR MIG_NAME
+  BAK_DIR="$(grep '^BACKUP_DIR=' "$HIDE_STATE" | cut -d= -f2-)"
+  MIG_NAME="$(grep '^MIGRATION=' "$HIDE_STATE" | cut -d= -f2-)"
+  warn "Patch ServerPolicy & ClientController akan dikembalikan ke file asli"
+  warn "(backup: ${BAK_DIR}), perintah artisan dihapus, kolom hide_from_admin dibuang."
+  ask "Ketik CABUT untuk lanjut" ""; [ "$REPLY_JAWAB" = "CABUT" ] || { warn "Dibatalkan."; pause; return; }
+
+  cd "$PANEL_DIR" || die "Tidak bisa masuk $PANEL_DIR."
+  [ -f "${BAK_DIR}/ServerPolicy.php" ] || die "Backup ServerPolicy tidak ditemukan di ${BAK_DIR}. Batal demi keamanan."
+  [ -f "${BAK_DIR}/ClientController.php" ] || die "Backup ClientController tidak ditemukan di ${BAK_DIR}. Batal demi keamanan."
+  cp "${BAK_DIR}/ServerPolicy.php" app/Policies/ServerPolicy.php || die "Gagal memulihkan ServerPolicy."
+  cp "${BAK_DIR}/ClientController.php" app/Http/Controllers/Api/Client/ClientController.php || die "Gagal memulihkan ClientController."
+  rm -f "$HIDE_CMD_FILE"
+
+  php artisan migrate:rollback --force --path="database/migrations/${MIG_NAME}" || {
+    warn "Rollback migrasi gagal; file inti SUDAH dipulihkan jadi panel aman,"
+    warn "tetapi kolom hide_from_admin masih ada (tidak berbahaya). Hapus manual bila perlu:"
+    warn "  php artisan migrate:rollback --path=database/migrations/${MIG_NAME}"
+    pause; return
+  }
+  rm -f "database/migrations/${MIG_NAME}" "$HIDE_STATE"
+  php artisan config:clear >/dev/null 2>&1 || true
+  ok "Fitur sembunyikan server sudah dicopot. Panel kembali ke file asli."
+  info "Folder backup lama tetap disimpan di ${BAK_DIR} (hapus manual bila tidak perlu)."
+  pause
+}
+
 # ------------------------- Uninstall ------------------------
 uninstall_panel() {
   warn "Ini akan MENGHAPUS panel, database panel, dan file di $PANEL_DIR. Tidak bisa dibatalkan!"
@@ -556,6 +785,8 @@ menu() {
     echo "  8) Uninstall Panel"
     echo "  9) Uninstall Wings"
     echo " 10) Pasang NookTheme (ganti panel utuh, bukan tema Blueprint)"
+    echo " 11) Proteksi: Sembunyikan Server dari Admin (pasang)"
+    echo " 12) Proteksi: Sembunyikan Server dari Admin (copot)"
     echo "  0) Keluar"
     echo ""
     read -r -p "  Pilih menu: " PIL
@@ -570,6 +801,8 @@ menu() {
       8) uninstall_panel ;;
       9) uninstall_wings ;;
      10) install_nooktheme ;;
+     11) install_hide_admin ;;
+     12) uninstall_hide_admin ;;
       0) echo "Sampai jumpa!"; exit 0 ;;
       *) warn "Pilihan tidak dikenal."; sleep 1 ;;
     esac
