@@ -407,6 +407,8 @@ install_theme_catalog() {
     echo "  5) Amber Abyss    — kuning amber (fernsehheft)"
     echo "  6) SKA Theme      — neon luar angkasa (sdgamer8263)"
     echo "  7) URL sendiri    — unduh file .blueprint dari URL kamu"
+    echo "  8) Nebula         — tema PREMIUM dari prplwtf (info cara pasang resmi)"
+    echo "  (NookTheme tidak ada di sini: itu panel utuh, pasang lewat menu utama 10)"
     echo "  0) Kembali"
     echo ""
     read -r -p "  Pilih tema: " TEMA
@@ -424,11 +426,81 @@ install_theme_catalog() {
         case "$CUSTOM_FILE" in *.blueprint) ;; *) CUSTOM_FILE="custom.blueprint" ;; esac
         bp_install_download "$CUSTOM_URL" "$CUSTOM_FILE" "Tema dari URL"
         ;;
+      8)
+        echo ""
+        info "Nebula adalah tema PREMIUM dari prplwtf (dijual resmi di BuiltByBit)."
+        info "Repo GitHub-nya hanya untuk issue/feedback — TIDAK ada file tema yang bisa diunduh dari sana."
+        info "Kalau kamu sudah membeli Nebula: pasang file .blueprint hasil unduhan resminya"
+        info "lewat menu utama 5 (Pasang Ekstensi/Tema Blueprint), atau menu 7 (URL sendiri) di sini."
+        ;;
       0) return ;;
       *) warn "Pilihan tidak dikenal." ;;
     esac
     pause
   done
+}
+
+# ------------------ NookTheme (ganti panel utuh) ------------------
+# NookTheme (Nookure/NookTheme) BUKAN tema Blueprint: itu fork panel penuh
+# (gratis/open-source). Masangnya menimpa seluruh panel dengan rilis resmi
+# mereka, jadi wajib backup dulu dan panel mengikuti versi fork mereka.
+install_nooktheme() {
+  [ -d "$PANEL_DIR" ] || die "Panel tidak ditemukan di $PANEL_DIR. Instal panel dulu ya."
+  [ -f "${PANEL_DIR}/.env" ] || die "File .env panel tidak ditemukan; panel sepertinya belum terinstal."
+  warn "=== PERINGATAN: INI MENGGANTI SELURUH PANEL ==="
+  warn "NookTheme bukan tema Blueprint — seluruh file panel akan ditimpa fork NookTheme"
+  warn "(versi panel mengikuti rilis NookTheme, bukan panel resmi Pterodactyl lagi)."
+  warn "Tema/ekstensi Blueprint yang sudah terpasang kemungkinan besar TIDAK jalan setelah ini."
+  warn "Script membuat backup file panel + database sebelum mengganti."
+  ask "Ketik GANTI untuk lanjut" ""; [ "$REPLY_JAWAB" = "GANTI" ] || { warn "Dibatalkan."; pause; return; }
+
+  cd "$PANEL_DIR" || die "Tidak bisa masuk $PANEL_DIR."
+
+  # --- Backup file panel + database ---
+  local TS BAK_DIR
+  TS="$(date +%Y%m%d-%H%M%S)"; BAK_DIR="/root/backup-nooktheme-${TS}"
+  info "Membuat backup panel ke ${BAK_DIR} ..."
+  mkdir -p "$BAK_DIR" || die "Gagal membuat folder backup."
+  tar --exclude='pterodactyl/storage/logs' -czf "${BAK_DIR}/panel-files.tar.gz" -C /var/www pterodactyl \
+    || warn "Backup file panel tidak sempurna (ada file yang gagal diarsipkan)."
+  local DB_NAME DB_USER DB_PASS
+  DB_NAME="$(grep -E '^DB_DATABASE=' .env | head -n1 | cut -d= -f2- | tr -d '"')"
+  DB_USER="$(grep -E '^DB_USERNAME=' .env | head -n1 | cut -d= -f2- | tr -d '"')"
+  DB_PASS="$(grep -E '^DB_PASSWORD=' .env | head -n1 | cut -d= -f2- | tr -d '"')"
+  if [ -n "$DB_NAME" ] && [ -n "$DB_USER" ] && command -v mysqldump >/dev/null 2>&1; then
+    mysqldump -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" > "${BAK_DIR}/panel-db.sql" 2>/dev/null \
+      && ok "Backup database tersimpan." || warn "Backup database gagal; lanjut hanya dengan backup file."
+  else
+    warn "Kredensial database tidak terbaca; backup hanya file panel."
+  fi
+  ok "Backup selesai di ${BAK_DIR}."
+
+  # --- Timpa panel dengan rilis NookTheme (langkah resmi README mereka) ---
+  info "Mengunduh NookTheme terbaru dari GitHub Nookure/NookTheme..."
+  php artisan down >/dev/null 2>&1 || true
+  if ! curl -fsSL -o /tmp/nooktheme.tar.gz "https://github.com/Nookure/NookTheme/releases/latest/download/panel.tar.gz"; then
+    php artisan up >/dev/null 2>&1 || true
+    die "Gagal mengunduh NookTheme. Panel belum berubah; backup tetap di ${BAK_DIR}."
+  fi
+  tar -xzf /tmp/nooktheme.tar.gz -C "$PANEL_DIR" || { php artisan up >/dev/null 2>&1 || true; die "Gagal mengekstrak NookTheme. Panel bisa dipulihkan dari backup ${BAK_DIR}."; }
+  rm -f /tmp/nooktheme.tar.gz
+  chmod -R 755 storage/* bootstrap/cache/
+  COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --optimize-autoloader --no-interaction || warn "composer install ada masalah — cek pesan di atas."
+  php artisan view:clear; php artisan config:clear
+  php artisan migrate --seed --force || warn "Migrasi database ada masalah — cek pesan di atas."
+  chown -R www-data:www-data "$PANEL_DIR"/*
+  php artisan up >/dev/null 2>&1 || true
+
+  echo ""
+  ok "==================================================="
+  ok "  NOOKTHEME TERPASANG (panel sekarang memakai fork NookTheme)."
+  ok "  Backup panel lama: ${BAK_DIR}"
+  ok "    - panel-files.tar.gz (semua file panel)"
+  ok "    - panel-db.sql (dump database, bila berhasil dibuat)"
+  ok "==================================================="
+  warn "Mau balik ke panel lama? Ekstrak panel-files.tar.gz ke /var/www, impor panel-db.sql,"
+  warn "lalu jalankan update panel (menu 7) supaya file panel resmi kembali segar."
+  pause
 }
 
 # ------------------------- Uninstall ------------------------
@@ -483,6 +555,7 @@ menu() {
     echo "  7) Update Panel"
     echo "  8) Uninstall Panel"
     echo "  9) Uninstall Wings"
+    echo " 10) Pasang NookTheme (ganti panel utuh, bukan tema Blueprint)"
     echo "  0) Keluar"
     echo ""
     read -r -p "  Pilih menu: " PIL
@@ -496,6 +569,7 @@ menu() {
       7) update_panel ;;
       8) uninstall_panel ;;
       9) uninstall_wings ;;
+     10) install_nooktheme ;;
       0) echo "Sampai jumpa!"; exit 0 ;;
       *) warn "Pilihan tidak dikenal."; sleep 1 ;;
     esac
