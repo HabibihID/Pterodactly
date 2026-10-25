@@ -411,6 +411,7 @@ install_theme_catalog() {
     echo "  9) Habibi Vertex  — tema ORIGINAL Habibih Cloud ID (navy + hijau)"
     echo " 10) Habibi Aurora  — tema ORIGINAL Habibih Cloud ID (navy + biru)"
     echo " 11) Habibi Eclipse — tema ORIGINAL Habibih Cloud ID (violet gelap)"
+    echo " 12) Habibi Nova    — tema ORIGINAL Habibih Cloud ID (hitam navy + periwinkle)"
     echo "  (NookTheme tidak ada di sini: itu panel utuh, pasang lewat menu utama 10)"
     echo "  0) Kembali"
     echo ""
@@ -439,6 +440,7 @@ install_theme_catalog() {
       9) bp_install_download "https://github.com/HabibihID/habibiptero/releases/download/vertex-v1.0.0/habibivertex.blueprint" "habibivertex.blueprint" "Habibi Vertex" ;;
       10) bp_install_download "https://github.com/HabibihID/habibiptero/releases/download/aurora-v1.0.0/habibiaurora.blueprint" "habibiaurora.blueprint" "Habibi Aurora" ;;
       11) bp_install_download "https://github.com/HabibihID/habibiptero/releases/download/eclipse-v1.0.0/habibieclipse.blueprint" "habibieclipse.blueprint" "Habibi Eclipse" ;;
+      12) bp_install_download "https://github.com/HabibihID/habibiptero/releases/download/nova-v1.0.0/habibinova.blueprint" "habibinova.blueprint" "Habibi Nova" ;;
       0) return ;;
       *) warn "Pilihan tidak dikenal." ;;
     esac
