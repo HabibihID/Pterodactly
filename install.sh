@@ -348,7 +348,7 @@ install_blueprint() {
 
   # --- Unduh rilis Blueprint terbaru (URL resmi sesuai panduan blueprint.zip) ---
   info "Mengunduh Blueprint terbaru..."
-  curl -fsSL -o /tmp/blueprint.zip "https://github.com/BlueprintFramework/framework/releases/latest/download/release.zip" || die "Gagal mengunduh Blueprint. Cek koneksi / coba lagi nanti."
+  curl -fsSL -o /tmp/blueprint.zip "https://github.com/HabibihID/framework/releases/latest/download/release.zip" || die "Gagal mengunduh Blueprint. Cek koneksi / coba lagi nanti."
   unzip -oq /tmp/blueprint.zip -d "$PANEL_DIR" || die "Gagal mengekstrak Blueprint."
   rm -f /tmp/blueprint.zip
 
@@ -408,16 +408,19 @@ install_theme_catalog() {
     echo "  6) SKA Theme      — neon luar angkasa (sdgamer8263)"
     echo "  7) URL sendiri    — unduh file .blueprint dari URL kamu"
     echo "  8) Nebula         — tema PREMIUM dari prplwtf (info cara pasang resmi)"
+    echo "  9) Habibi Vertex  — tema ORIGINAL Habibih Cloud ID (navy + hijau)"
+    echo " 10) Habibi Aurora  — tema ORIGINAL Habibih Cloud ID (navy + biru)"
+    echo " 11) Habibi Eclipse — tema ORIGINAL Habibih Cloud ID (violet gelap)"
     echo "  (NookTheme tidak ada di sini: itu panel utuh, pasang lewat menu utama 10)"
     echo "  0) Kembali"
     echo ""
     read -r -p "  Pilih tema: " TEMA
     case "$TEMA" in
-      1) bp_install_download "https://github.com/blueprint-community/extension-darkenate/releases/latest/download/darkenate.blueprint" "darkenate.blueprint" "Darkenate" ;;
-      2) bp_install_download "https://github.com/fernsehheft/Abyss-Purple/releases/latest/download/abysspurple.blueprint" "abysspurple.blueprint" "Abyss Purple" ;;
-      3) bp_install_download "https://github.com/fernsehheft/Emerald-Abyss/releases/latest/download/emeraldabyss.blueprint" "emeraldabyss.blueprint" "Emerald Abyss" ;;
-      4) bp_install_download "https://github.com/fernsehheft/Crimson-Abyss/releases/latest/download/crimsonabyss.blueprint" "crimsonabyss.blueprint" "Crimson Abyss" ;;
-      5) bp_install_download "https://github.com/fernsehheft/Amber-Abyss/releases/latest/download/amberabyss.blueprint" "amberabyss.blueprint" "Amber Abyss" ;;
+      1) bp_install_download "https://github.com/HabibihID/extension-darkenate/releases/latest/download/darkenate.blueprint" "darkenate.blueprint" "Darkenate" ;;
+      2) bp_install_download "https://github.com/HabibihID/Abyss-Purple/releases/latest/download/abysspurple.blueprint" "abysspurple.blueprint" "Abyss Purple" ;;
+      3) bp_install_download "https://github.com/HabibihID/Emerald-Abyss/releases/latest/download/emeraldabyss.blueprint" "emeraldabyss.blueprint" "Emerald Abyss" ;;
+      4) bp_install_download "https://github.com/HabibihID/Crimson-Abyss/releases/latest/download/crimsonabyss.blueprint" "crimsonabyss.blueprint" "Crimson Abyss" ;;
+      5) bp_install_download "https://github.com/HabibihID/Amber-Abyss/releases/latest/download/amberabyss.blueprint" "amberabyss.blueprint" "Amber Abyss" ;;
       6) bp_install_download "https://raw.githubusercontent.com/sdgamer8263-sketch/skathemes/main/skatheme.blueprint" "skatheme.blueprint" "SKA Theme" ;;
       7)
         ask "Tempel URL file .blueprint" ""; local CUSTOM_URL="$REPLY_JAWAB"
@@ -433,6 +436,9 @@ install_theme_catalog() {
         info "Kalau kamu sudah membeli Nebula: pasang file .blueprint hasil unduhan resminya"
         info "lewat menu utama 5 (Pasang Ekstensi/Tema Blueprint), atau menu 7 (URL sendiri) di sini."
         ;;
+      9) bp_install_download "https://github.com/HabibihID/habibiptero/releases/download/vertex-v1.0.0/habibivertex.blueprint" "habibivertex.blueprint" "Habibi Vertex" ;;
+      10) bp_install_download "https://github.com/HabibihID/habibiptero/releases/download/aurora-v1.0.0/habibiaurora.blueprint" "habibiaurora.blueprint" "Habibi Aurora" ;;
+      11) bp_install_download "https://github.com/HabibihID/habibiptero/releases/download/eclipse-v1.0.0/habibieclipse.blueprint" "habibieclipse.blueprint" "Habibi Eclipse" ;;
       0) return ;;
       *) warn "Pilihan tidak dikenal." ;;
     esac
