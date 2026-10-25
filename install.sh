@@ -144,7 +144,7 @@ install_panel() {
   chown -R www-data:www-data "$PANEL_DIR"/*
 
   # --- User admin ---
-  local ADMIN_PASS; ADMIN_PASS="$(gen_pass 16)"
+  local ADMIN_PASS; ADMIN_PASS="${HABIBI_ADMIN_PASS:-$(gen_pass 16)}"
   info "Membuat user admin..."
   php artisan p:user:make --email="$ADMIN_EMAIL" --username="$ADMIN_USER" \
     --name-first="$ADMIN_FIRST" --name-last="$ADMIN_LAST" --password="$ADMIN_PASS" --admin=1 || die "Gagal membuat user admin."
@@ -232,6 +232,113 @@ EOF
   pause
 }
 
+# --------------------- Node Otomatis (mode auto) ---------------------
+# Membuat Location + Node di panel yang BARU terinstal, lalu menulis
+# config.yml Wings dari konfigurasi node itu — tanpa buka panel sama
+# sekali. Dipakai oleh install_auto_all (Panel + Wings full otomatis).
+auto_node_config() {
+  info "Membuat node otomatis di panel..."
+  [ -d "$PANEL_DIR" ] || die "Panel tidak ditemukan di $PANEL_DIR."
+  local APP_URL FQDN SCHEME MEM_MB DISK_MB
+  APP_URL="$(grep -E '^APP_URL=' "$PANEL_DIR/.env" | head -1 | cut -d= -f2-)"
+  FQDN="$(echo "$APP_URL" | sed -E 's|^https?://||; s|/.*$||')"
+  case "$APP_URL" in https://*) SCHEME="https" ;; *) SCHEME="http" ;; esac
+  [ -n "$FQDN" ] || die "APP_URL panel tidak terbaca dari .env."
+  MEM_MB="$(awk '/^MemTotal:/ {print int($2/1024)}' /proc/meminfo)"
+  DISK_MB="$(df -m --output=size /var/lib 2>/dev/null | tail -1 | tr -d ' ')"
+  [ -n "$DISK_MB" ] || DISK_MB=10240
+  cat > /tmp/habibi-autonode.php <<'PHP'
+<?php
+// Helper mode auto: buat Location + Node, cetak konfigurasi Wings (JSON).
+$panelDir = '/var/www/pterodactyl';
+require $panelDir . '/vendor/autoload.php';
+$app = require $panelDir . '/bootstrap/app.php';
+$app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
+
+use Illuminate\Support\Str;
+use Pterodactyl\Models\Location;
+use Pterodactyl\Models\Node;
+
+$fqdn = $argv[1]; $scheme = $argv[2]; $mem = (int) $argv[3];
+$disk = (int) $argv[4]; $appUrl = $argv[5];
+
+$loc = Location::firstOrCreate(['short' => 'auto'], ['long' => 'Auto Node Location']);
+$node = Node::where('fqdn', $fqdn)->first();
+if (!$node) {
+    $node = new Node();
+    $node->name = 'Auto Node';
+    $node->location_id = $loc->id;
+    $node->fqdn = $fqdn;
+    $node->scheme = $scheme;
+    $node->behind_proxy = false;
+    $node->public = true;
+    $node->daemonBase = '/var/lib/pterodactyl/volumes';
+    $node->daemonSFTP = 2022;
+    $node->daemonListen = 8080;
+    $node->memory = $mem;
+    $node->memory_overallocate = 0;
+    $node->disk = $disk;
+    $node->disk_overallocate = 0;
+    $node->upload_size = 100;
+    if (empty($node->uuid)) { $node->uuid = (string) Str::uuid(); }
+    if (empty($node->token_id)) { $node->token_id = Str::random(16); }
+    if (empty($node->token)) { $node->token = Str::random(64); }
+    $node->save();
+}
+if (method_exists($node, 'getConfiguration')) {
+    $cfg = $node->getConfiguration();
+} else {
+    $cfg = [
+        'debug' => false,
+        'uuid' => $node->uuid,
+        'token_id' => $node->token_id,
+        'token' => $node->token,
+        'api' => [
+            'host' => '0.0.0.0',
+            'port' => (int) $node->daemonListen,
+            'ssl' => [
+                'enabled' => $node->scheme === 'https',
+                'cert' => '/etc/letsencrypt/live/' . $node->fqdn . '/fullchain.pem',
+                'key' => '/etc/letsencrypt/live/' . $node->fqdn . '/privkey.pem',
+            ],
+            'upload_limit' => (int) $node->upload_size,
+        ],
+        'system' => [
+            'data' => $node->daemonBase,
+            'sftp' => ['bind_address' => '0.0.0.0', 'bind_port' => (int) $node->daemonSFTP],
+        ],
+        'allowed_mounts' => [],
+        'remote' => $appUrl,
+    ];
+}
+echo "HABIBI_CONFIG_BEGIN\n";
+echo json_encode($cfg) . "\n";
+echo "HABIBI_CONFIG_END\n";
+PHP
+  local OUT
+  OUT="$(cd "$PANEL_DIR" && php /tmp/habibi-autonode.php "$FQDN" "$SCHEME" "$MEM_MB" "$DISK_MB" "$APP_URL" 2>/tmp/habibi-autonode.err)"
+  if ! echo "$OUT" | grep -q "HABIBI_CONFIG_BEGIN"; then
+    cat /tmp/habibi-autonode.err >&2
+    die "Gagal membuat node otomatis (helper PHP error — lihat pesan di atas)."
+  fi
+  mkdir -p "$WINGS_DIR"
+  echo "$OUT" | sed -n '/HABIBI_CONFIG_BEGIN/,/HABIBI_CONFIG_END/p' | grep -v "HABIBI_CONFIG" > "${WINGS_DIR}/config.yml"
+  rm -f /tmp/habibi-autonode.php
+  grep -q '"uuid"' "${WINGS_DIR}/config.yml" || die "config.yml otomatis tidak lengkap (uuid kosong)."
+  ok "Node otomatis dibuat; config.yml Wings tersimpan di ${WINGS_DIR}/config.yml"
+}
+
+# Panel + Wings FULL OTOMATIS: username admin dikunci "admin" lewat
+# jawaban form/driver, password admin dikunci via HABIBI_ADMIN_PASS,
+# node + config Wings dibuat sendiri oleh auto_node_config.
+install_auto_all() {
+  export HABIBI_AUTO=1
+  export HABIBI_ADMIN_PASS="admin123"
+  install_panel
+  auto_node_config
+  install_wings
+}
+
 # ------------------------- Wings ----------------------------
 install_wings() {
   detect_os
@@ -261,9 +368,13 @@ install_wings() {
   info "Salin seluruh isi config.yml, lalu tempel di bawah ini."
   info "Setelah selesai menempel, tekan ENTER lalu Ctrl+D."
   echo ""
+  if [ "${HABIBI_AUTO:-}" = "1" ] && [ -s "${WINGS_DIR}/config.yml" ] && grep -qE '"uuid"|uuid:' "${WINGS_DIR}/config.yml"; then
+    ok "config.yml node otomatis sudah tersedia — langkah tempel dilewati."
+  else
   read -r -p "Tekan ENTER untuk mulai menempel config.yml..." _
   cat > "${WINGS_DIR}/config.yml" || die "Gagal menyimpan config.yml."
   grep -q "uuid:" "${WINGS_DIR}/config.yml" || warn "Isi config sepertinya tidak lengkap (tidak ada 'uuid:'). Cek lagi di Panel."
+  fi
 
   # --- Systemd service ---
   cat > /etc/systemd/system/wings.service <<'EOF'
@@ -795,6 +906,7 @@ menu() {
     echo " 10) Pasang NookTheme (ganti panel utuh, bukan tema Blueprint)"
     echo " 11) Proteksi: Sembunyikan Server dari Admin (pasang)"
     echo " 12) Proteksi: Sembunyikan Server dari Admin (copot)"
+    echo " 13) Auto Instal Panel + Wings (FULL OTOMATIS — admin/admin123)"
     echo "  0) Keluar"
     echo ""
     read -r -p "  Pilih menu: " PIL
@@ -811,6 +923,7 @@ menu() {
      10) install_nooktheme ;;
      11) install_hide_admin ;;
      12) uninstall_hide_admin ;;
+     13) install_auto_all ;;
       0) echo "Sampai jumpa!"; exit 0 ;;
       *) warn "Pilihan tidak dikenal."; sleep 1 ;;
     esac
